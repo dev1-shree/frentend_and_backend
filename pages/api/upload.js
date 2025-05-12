@@ -1,48 +1,47 @@
 import { google } from 'googleapis';
 import formidable from 'formidable';
+import { Readable } from 'stream';
 import fs from 'fs';
-import path from 'path';
 
 export const config = {
-  api: { bodyParser: false },
+  api: {
+    bodyParser: false,
+  },
 };
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).send('Only POST allowed');
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Only POST allowed' });
+  }
 
-  // 🔐 Decode service account key
-  const keyPath = path.join(process.cwd(), '/service_account.json');
   const keyB64 = process.env.GOOGLE_SERVICE_ACCOUNT_B64;
-
   if (!keyB64) return res.status(500).json({ error: 'Missing GOOGLE_SERVICE_ACCOUNT_B64' });
 
+  let serviceAccount;
   try {
-    fs.writeFileSync(keyPath, Buffer.from(keyB64, 'base64').toString('utf-8'));
+    serviceAccount = JSON.parse(Buffer.from(keyB64, 'base64').toString('utf-8'));
   } catch (err) {
     return res.status(500).json({ error: 'Failed to decode service account' });
   }
 
-  const uploadDir = path.join(process.cwd(), '/uploads');
-  fs.mkdirSync(uploadDir, { recursive: true });
-
-  const form = formidable({
-    keepExtensions: true,
-    uploadDir,
-    multiples: true,
-  });
+  const form = formidable({ keepExtensions: true, multiples: true });
 
   form.parse(req, async (err, fields, files) => {
-    if (err) return res.status(500).json({ error: 'Form parsing failed.' });
+    if (err) return res.status(500).json({ error: 'Form parsing failed' });
 
     const auth = new google.auth.GoogleAuth({
-      keyFile: keyPath,
+      credentials: serviceAccount,
       scopes: ['https://www.googleapis.com/auth/drive.file'],
     });
 
     const drive = google.drive({ version: 'v3', auth });
+
     const uploaded = [];
 
-    const uploadFile = async (file, folderId) => {
+    const uploadBufferFile = async (file, folderId) => {
+      const buffer = await fs.promises.readFile(file.filepath); // 👈 use buffer
+      const stream = Readable.from(buffer);
+
       const response = await drive.files.create({
         requestBody: {
           name: file.originalFilename,
@@ -50,7 +49,7 @@ export default async function handler(req, res) {
         },
         media: {
           mimeType: file.mimetype,
-          body: fs.createReadStream(file.filepath),
+          body: stream,
         },
         fields: 'id, name, webViewLink, webContentLink',
       });
@@ -73,11 +72,11 @@ export default async function handler(req, res) {
       const resumeFile = Array.isArray(files.resumeFile) ? files.resumeFile[0] : files.resumeFile;
 
       if (jobFile) {
-        uploaded.push(await uploadFile(jobFile, process.env.GOOGLE_DRIVE_FOLDER_JOB));
+        uploaded.push(await uploadBufferFile(jobFile, process.env.GOOGLE_DRIVE_FOLDER_JOB));
       }
 
       if (resumeFile) {
-        uploaded.push(await uploadFile(resumeFile, process.env.GOOGLE_DRIVE_FOLDER_RESUME));
+        uploaded.push(await uploadBufferFile(resumeFile, process.env.GOOGLE_DRIVE_FOLDER_RESUME));
       }
 
       res.status(200).json({ uploaded });
