@@ -25,7 +25,7 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'File parsing failed.' });
     }
 
-    const keyPath = path.join(process.cwd(), process.env.GOOGLE_SERVICE_ACCOUNT_B64);
+    const keyPath = path.join(process.cwd(), process.env.GOOGLE_SERVICE_ACCOUNT_BASE64);
     if (!fs.existsSync(keyPath)) {
       return res.status(500).json({ error: 'Service account key not found' });
     }
