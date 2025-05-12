@@ -10,25 +10,29 @@ export const config = {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).send('Only POST allowed');
 
+  // 🔐 Decode service account key
+  const keyPath = path.join(process.cwd(), 'service_account.json');
+  const keyB64 = process.env.GOOGLE_SERVICE_ACCOUNT_B64;
+
+  if (!keyB64) return res.status(500).json({ error: 'Missing GOOGLE_SERVICE_ACCOUNT_B64' });
+
+  try {
+    fs.writeFileSync(keyPath, Buffer.from(keyB64, 'base64').toString('utf-8'));
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to decode service account' });
+  }
+
   const uploadDir = path.join(process.cwd(), '/uploads');
   fs.mkdirSync(uploadDir, { recursive: true });
 
   const form = formidable({
     keepExtensions: true,
-    uploadDir: uploadDir,
+    uploadDir,
     multiples: true,
   });
 
   form.parse(req, async (err, fields, files) => {
-    if (err) {
-      console.error('Form parse error:', err);
-      return res.status(500).json({ error: 'File parsing failed.' });
-    }
-
-    const keyPath = path.join(process.cwd(), process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64);
-    if (!fs.existsSync(keyPath)) {
-      return res.status(500).json({ error: 'Service account key not found' });
-    }
+    if (err) return res.status(500).json({ error: 'Form parsing failed.' });
 
     const auth = new google.auth.GoogleAuth({
       keyFile: keyPath,
@@ -39,10 +43,6 @@ export default async function handler(req, res) {
     const uploaded = [];
 
     const uploadFile = async (file, folderId) => {
-      if (!file || !file.filepath) {
-        throw new Error('File path is undefined');
-      }
-
       const response = await drive.files.create({
         requestBody: {
           name: file.originalFilename,
@@ -55,13 +55,9 @@ export default async function handler(req, res) {
         fields: 'id, name, webViewLink, webContentLink',
       });
 
-      // Make public
       await drive.permissions.create({
         fileId: response.data.id,
-        requestBody: {
-          role: 'reader',
-          type: 'anyone',
-        },
+        requestBody: { role: 'reader', type: 'anyone' },
       });
 
       return {
@@ -76,35 +72,14 @@ export default async function handler(req, res) {
       const jobFile = Array.isArray(files.jobFile) ? files.jobFile[0] : files.jobFile;
       const resumeFile = Array.isArray(files.resumeFile) ? files.resumeFile[0] : files.resumeFile;
 
-      const isJobUploaded = !!jobFile;
-      const isResumeUploaded = !!resumeFile;
-
-      // 1. Only job file → upload to Job folder
-      if (isJobUploaded && !isResumeUploaded) {
-        const uploadedJob = await uploadFile(jobFile, process.env.GOOGLE_DRIVE_FOLDER_JOB);
-        uploaded.push({ ...uploadedJob, type: 'jobFile_jobFolder' });
+      if (jobFile) {
+        uploaded.push(await uploadFile(jobFile, process.env.GOOGLE_DRIVE_FOLDER_JOB));
       }
 
-      // 2. Only resume file → upload to Resume folder
-      if (!isJobUploaded && isResumeUploaded) {
-        const uploadedResume = await uploadFile(resumeFile, process.env.GOOGLE_DRIVE_FOLDER_RESUME);
-        uploaded.push({ ...uploadedResume, type: 'resumeFile_resumeFolder' });
+      if (resumeFile) {
+        uploaded.push(await uploadFile(resumeFile, process.env.GOOGLE_DRIVE_FOLDER_RESUME));
       }
 
-      // 3. Both files → upload both to both folders
-      if (isJobUploaded && isResumeUploaded) {
-        const uploadedJob1 = await uploadFile(jobFile, process.env.GOOGLE_DRIVE_FOLDER_JOB);
-        uploaded.push({ ...uploadedJob1, type: 'jobFile_jobFolder' });
-
-        const uploadedJob2 = await uploadFile(jobFile, process.env.GOOGLE_DRIVE_FOLDER_RESUME);
-        uploaded.push({ ...uploadedJob2, type: 'jobFile_resumeFolder' });
-
-        const uploadedResume1 = await uploadFile(resumeFile, process.env.GOOGLE_DRIVE_FOLDER_JOB);
-        uploaded.push({ ...uploadedResume1, type: 'resumeFile_jobFolder' });
-
-        const uploadedResume2 = await uploadFile(resumeFile, process.env.GOOGLE_DRIVE_FOLDER_RESUME);
-        uploaded.push({ ...uploadedResume2, type: 'resumeFile_resumeFolder' });
-      }
       res.status(200).json({ uploaded });
     } catch (error) {
       console.error('Upload error:', error);
