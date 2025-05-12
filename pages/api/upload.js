@@ -39,7 +39,7 @@ export default async function handler(req, res) {
     const uploaded = [];
 
     const uploadBufferFile = async (file, folderId) => {
-      const buffer = await fs.promises.readFile(file.filepath); // 👈 use buffer
+      const buffer = await fs.promises.readFile(file.filepath); 
       const stream = Readable.from(buffer);
 
       const response = await drive.files.create({
