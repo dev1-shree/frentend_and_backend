@@ -1,82 +1,114 @@
-"use client";
-import { useState, useRef } from 'react';
+import { google } from 'googleapis';
+import formidable from 'formidable';
+import fs from 'fs';
+import path from 'path';
 
-export default function UploadFile() {
-  // Initialize states to hold multiple files for both job and resume
-  const [jobFiles, setJobFiles] = useState([]);
-  const [resumeFiles, setResumeFiles] = useState([]);
+export const config = {
+  api: { bodyParser: false },
+};
 
-  const jobInputRef = useRef();
-  const resumeInputRef = useRef();
+export default async function handler(req, res) {
+  if (req.method !== 'POST') return res.status(405).send('Only POST allowed');
 
-  // Handle multiple job files selection
-  const handleJobFilesChange = (e) => {
-    setJobFiles(Array.from(e.target.files)); // Convert FileList to an array
-  };
+  const uploadDir = path.join(process.cwd(), '/uploads');
+  fs.mkdirSync(uploadDir, { recursive: true });
 
-  // Handle multiple resume files selection
-  const handleResumeFilesChange = (e) => {
-    setResumeFiles(Array.from(e.target.files)); // Convert FileList to an array
-  };
+  const form = formidable({
+    keepExtensions: true,
+    uploadDir: uploadDir,
+    multiples: true,
+  });
 
-  const handleUpload = async () => {
-    if (jobFiles.length === 0 && resumeFiles.length === 0) {
-      alert('Please upload at least one file.');
-      return;
+  form.parse(req, async (err, fields, files) => {
+    if (err) {
+      console.error('Form parse error:', err);
+      return res.status(500).json({ error: 'File parsing failed.' });
     }
 
-    const formData = new FormData();
-    // Append all selected job files
-    jobFiles.forEach((file) => formData.append('jobFile', file));
-    // Append all selected resume files
-    resumeFiles.forEach((file) => formData.append('resumeFile', file));
+    const keyPath = path.join(process.cwd(), process.env.GOOGLE_APPLICATION_CREDENTIALS);
+    if (!fs.existsSync(keyPath)) {
+      return res.status(500).json({ error: 'Service account key not found' });
+    }
 
-    try {
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
+    const auth = new google.auth.GoogleAuth({
+      keyFile: keyPath,
+      scopes: ['https://www.googleapis.com/auth/drive.file'],
+    });
+
+    const drive = google.drive({ version: 'v3', auth });
+    const uploaded = [];
+
+    const uploadFile = async (file, folderId) => {
+      if (!file || !file.filepath) {
+        throw new Error('File path is undefined');
+      }
+
+      const response = await drive.files.create({
+        requestBody: {
+          name: file.originalFilename,
+          parents: [folderId],
+        },
+        media: {
+          mimeType: file.mimetype,
+          body: fs.createReadStream(file.filepath),
+        },
+        fields: 'id, name, webViewLink, webContentLink',
       });
 
-      const data = await res.json();
-      if (res.ok) {
-        alert('Uploaded Successfully');
-        setJobFiles([]);  // Clear the job files state
-        setResumeFiles([]); // Clear the resume files state
-        if (jobInputRef.current) jobInputRef.current.value = "";
-        if (resumeInputRef.current) resumeInputRef.current.value = "";
-      } else {
-        alert(Error: ${data.error});
+      // Make public
+      await drive.permissions.create({
+        fileId: response.data.id,
+        requestBody: {
+          role: 'reader',
+          type: 'anyone',
+        },
+      });
+
+      return {
+        fileId: response.data.id,
+        fileName: response.data.name,
+        viewLink: response.data.webViewLink,
+        downloadLink: response.data.webContentLink,
+      };
+    };
+
+    try {
+      const jobFile = Array.isArray(files.jobFile) ? files.jobFile[0] : files.jobFile;
+      const resumeFile = Array.isArray(files.resumeFile) ? files.resumeFile[0] : files.resumeFile;
+
+      const isJobUploaded = !!jobFile;
+      const isResumeUploaded = !!resumeFile;
+
+      // 1. Only job file → upload to Job folder
+      if (isJobUploaded && !isResumeUploaded) {
+        const uploadedJob = await uploadFile(jobFile, process.env.GOOGLE_DRIVE_FOLDER_JOB);
+        uploaded.push({ ...uploadedJob, type: 'jobFile_jobFolder' });
       }
-    } catch (err) {
-      alert('Upload failed. Server may be down.');
+
+      // 2. Only resume file → upload to Resume folder
+      if (!isJobUploaded && isResumeUploaded) {
+        const uploadedResume = await uploadFile(resumeFile, process.env.GOOGLE_DRIVE_FOLDER_RESUME);
+        uploaded.push({ ...uploadedResume, type: 'resumeFile_resumeFolder' });
+      }
+
+      // 3. Both files → upload both to both folders
+      if (isJobUploaded && isResumeUploaded) {
+        const uploadedJob1 = await uploadFile(jobFile, process.env.GOOGLE_DRIVE_FOLDER_JOB);
+        uploaded.push({ ...uploadedJob1, type: 'jobFile_jobFolder' });
+
+        const uploadedJob2 = await uploadFile(jobFile, process.env.GOOGLE_DRIVE_FOLDER_RESUME);
+        uploaded.push({ ...uploadedJob2, type: 'jobFile_resumeFolder' });
+
+        const uploadedResume1 = await uploadFile(resumeFile, process.env.GOOGLE_DRIVE_FOLDER_JOB);
+        uploaded.push({ ...uploadedResume1, type: 'resumeFile_jobFolder' });
+
+        const uploadedResume2 = await uploadFile(resumeFile, process.env.GOOGLE_DRIVE_FOLDER_RESUME);
+        uploaded.push({ ...uploadedResume2, type: 'resumeFile_resumeFolder' });
+      }
+      res.status(200).json({ uploaded });
+    } catch (error) {
+      console.error('Upload error:', error);
+      res.status(500).json({ error: error.message });
     }
-  };
-
-  return (
-    <div style={{ padding: '2rem' }}>
-      <div>
-        <h3>1. Upload Job Files (Multiple allowed)</h3>
-        <input
-          type="file"
-          ref={jobInputRef}
-          onChange={handleJobFilesChange}
-          multiple // Allow multiple files
-        />
-      </div>
-
-      <div style={{ marginTop: '1rem' }}>
-        <h3>2. Upload Resumes (Multiple allowed)</h3>
-        <input
-          type="file"
-          ref={resumeInputRef}
-          onChange={handleResumeFilesChange}
-          multiple // Allow multiple files
-        />
-      </div>
-
-      <button onClick={handleUpload} style={{ marginTop: '1.5rem' }}>
-        Submit Your Files
-      </button>
-    </div>
-  );
+  });
 }
