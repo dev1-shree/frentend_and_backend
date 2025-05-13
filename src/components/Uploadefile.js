@@ -2,21 +2,21 @@
 import { useState, useRef } from 'react';
 
 export default function UploadFile() {
-  // Initialize states to hold multiple files for both job and resume
+
   const [jobFiles, setJobFiles] = useState([]);
   const [resumeFiles, setResumeFiles] = useState([]);
 
   const jobInputRef = useRef();
   const resumeInputRef = useRef();
 
-  // Handle multiple job files selection
+
   const handleJobFilesChange = (e) => {
-    setJobFiles(Array.from(e.target.files)); // Convert FileList to an array
+    setJobFiles(Array.from(e.target.files)); 
   };
 
-  // Handle multiple resume files selection
+  
   const handleResumeFilesChange = (e) => {
-    setResumeFiles(Array.from(e.target.files)); // Convert FileList to an array
+    setResumeFiles(Array.from(e.target.files)); 
   };
 
   const handleUpload = async () => {
@@ -26,9 +26,9 @@ export default function UploadFile() {
     }
 
     const formData = new FormData();
-    // Append all selected job files
+   
     jobFiles.forEach((file) => formData.append('jobFile', file));
-    // Append all selected resume files
+    
     resumeFiles.forEach((file) => formData.append('resumeFile', file));
 
     try {
@@ -40,12 +40,12 @@ export default function UploadFile() {
       const data = await res.json();
       if (res.ok) {
         alert('Uploaded Successfully');
-        setJobFiles([]);  // Clear the job files state
-        setResumeFiles([]); // Clear the resume files state
+        setJobFiles([]);  
+        setResumeFiles([]);
         if (jobInputRef.current) jobInputRef.current.value = "";
         if (resumeInputRef.current) resumeInputRef.current.value = "";
       } else {
-        alert(`Error: ${data.error}`);
+        alert(Error: ${data.error});
       }
     } catch (err) {
       alert('Upload failed. Server may be down.');
@@ -60,7 +60,7 @@ export default function UploadFile() {
           type="file"
           ref={jobInputRef}
           onChange={handleJobFilesChange}
-          multiple // Allow multiple files
+          multiple
         />
       </div>
 
@@ -70,7 +70,7 @@ export default function UploadFile() {
           type="file"
           ref={resumeInputRef}
           onChange={handleResumeFilesChange}
-          multiple // Allow multiple files
+          multiple 
         />
       </div>
 
