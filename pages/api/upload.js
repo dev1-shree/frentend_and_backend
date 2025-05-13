@@ -76,13 +76,13 @@ export default async function handler(req, res) {
 
       // Upload job files to job folder
       for (const jobFile of jobFiles) {
-        const uploadedJob = await uploadFile(jobFile, process.env.GOOGLE_DRIVE_FOLDER_JOB);
+        const uploadedJob = await uploadBufferFile(jobFile, process.env.GOOGLE_DRIVE_FOLDER_JOB);
         uploaded.push({ ...uploadedJob, type: 'jobFile_jobFolder' });
       }
 
       // Upload resume files to resume folder
       for (const resumeFile of resumeFiles) {
-        const uploadedResume = await uploadFile(resumeFile, process.env.GOOGLE_DRIVE_FOLDER_RESUME);
+        const uploadedResume = await uploadBufferFile(resumeFile, process.env.GOOGLE_DRIVE_FOLDER_RESUME);
         uploaded.push({ ...uploadedResume, type: 'resumeFile_resumeFolder' });
       }
 
