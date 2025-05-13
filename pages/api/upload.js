@@ -39,7 +39,7 @@ export default async function handler(req, res) {
     const uploaded = [];
 
     const uploadBufferFile = async (file, folderId) => {
-      const buffer = await fs.promises.readFile(file.filepath); // 👈 use buffer
+      const buffer = await fs.promises.readFile(file.filepath); 
       const stream = Readable.from(buffer);
 
       const response = await drive.files.create({
@@ -68,14 +68,16 @@ export default async function handler(req, res) {
     };
 
     try {
-      const jobFile = Array.isArray(files.jobFile) ? files.jobFile[0] : files.jobFile;
-      const resumeFile = Array.isArray(files.resumeFile) ? files.resumeFile[0] : files.resumeFile;
+      const uploadedJobFiles = Array.isArray(files.jobFile) ? files.jobFile : [files.jobFile];
+      const uploadedResumeFiles = Array.isArray(files.resumeFile) ? files.resumeFile : [files.resumeFile];
 
-      if (jobFile) {
+      // Handle multiple job files
+      for (let jobFile of uploadedJobFiles) {
         uploaded.push(await uploadBufferFile(jobFile, process.env.GOOGLE_DRIVE_FOLDER_JOB));
       }
 
-      if (resumeFile) {
+      // Handle multiple resume files
+      for (let resumeFile of uploadedResumeFiles) {
         uploaded.push(await uploadBufferFile(resumeFile, process.env.GOOGLE_DRIVE_FOLDER_RESUME));
       }
 
