@@ -39,7 +39,7 @@ export default async function handler(req, res) {
     const uploaded = [];
 
     const uploadBufferFile = async (file, folderId) => {
-      const buffer = await fs.promises.readFile(file.filepath);
+      const buffer = await fs.promises.readFile(file.filepath); 
       const stream = Readable.from(buffer);
 
       const response = await drive.files.create({
@@ -68,31 +68,17 @@ export default async function handler(req, res) {
     };
 
     try {
-      // ✅ Safe array conversion (handle both single and multiple)
-      const uploadedJobFiles = files.jobFile
-        ? Array.isArray(files.jobFile)
-          ? files.jobFile
-          : [files.jobFile]
-        : [];
+      const uploadedJobFiles = Array.isArray(files.jobFile) ? files.jobFile : [files.jobFile];
+      const uploadedResumeFiles = Array.isArray(files.resumeFile) ? files.resumeFile : [files.resumeFile];
 
-      const uploadedResumeFiles = files.resumeFile
-        ? Array.isArray(files.resumeFile)
-          ? files.resumeFile
-          : [files.resumeFile]
-        : [];
-
-      // ✅ Upload job files
+      // Handle multiple job files
       for (let jobFile of uploadedJobFiles) {
-        if (jobFile?.filepath) {
-          uploaded.push(await uploadBufferFile(jobFile, process.env.GOOGLE_DRIVE_FOLDER_JOB));
-        }
+        uploaded.push(await uploadBufferFile(jobFile, process.env.GOOGLE_DRIVE_FOLDER_JOB));
       }
 
-      // ✅ Upload resume files
+      // Handle multiple resume files
       for (let resumeFile of uploadedResumeFiles) {
-        if (resumeFile?.filepath) {
-          uploaded.push(await uploadBufferFile(resumeFile, process.env.GOOGLE_DRIVE_FOLDER_RESUME));
-        }
+        uploaded.push(await uploadBufferFile(resumeFile, process.env.GOOGLE_DRIVE_FOLDER_RESUME));
       }
 
       res.status(200).json({ uploaded });
