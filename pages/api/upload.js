@@ -24,7 +24,7 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Failed to decode service account' });
   }
 
-  const form = formidable({ keepExtensions: true, multiples: true });
+  const form = formidable({ keepExtensions: true, uploadDir: uploadDir, multiples: true });
 
   form.parse(req, async (err, fields, files) => {
     if (err) return res.status(500).json({ error: 'Form parsing failed' });
@@ -67,18 +67,23 @@ export default async function handler(req, res) {
       };
     };
 
-    try {
-      const uploadedJobFiles = Array.isArray(files.jobFile) ? files.jobFile : [files.jobFile];
-      const uploadedResumeFiles = Array.isArray(files.resumeFile) ? files.resumeFile : [files.resumeFile];
+     try {
+         const jobFiles = Array.isArray(files.jobFile)? files.jobFile: files.jobFile? [files.jobFile]
+        : [];
 
-      // Handle multiple job files
-      for (let jobFile of uploadedJobFiles) {
-        uploaded.push(await uploadBufferFile(jobFile, process.env.GOOGLE_DRIVE_FOLDER_JOB));
+      const resumeFiles = Array.isArray(files.resumeFile)? files.resumeFile: files.resumeFile
+        ? [files.resumeFile]: [];
+
+      // Upload job files to job folder
+      for (const jobFile of jobFiles) {
+        const uploadedJob = await uploadFile(jobFile, process.env.GOOGLE_DRIVE_FOLDER_JOB);
+        uploaded.push({ ...uploadedJob, type: 'jobFile_jobFolder' });
       }
 
-      // Handle multiple resume files
-      for (let resumeFile of uploadedResumeFiles) {
-        uploaded.push(await uploadBufferFile(resumeFile, process.env.GOOGLE_DRIVE_FOLDER_RESUME));
+      // Upload resume files to resume folder
+      for (const resumeFile of resumeFiles) {
+        const uploadedResume = await uploadFile(resumeFile, process.env.GOOGLE_DRIVE_FOLDER_RESUME);
+        uploaded.push({ ...uploadedResume, type: 'resumeFile_resumeFolder' });
       }
 
       res.status(200).json({ uploaded });
