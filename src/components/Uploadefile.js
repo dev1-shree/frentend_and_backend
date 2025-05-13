@@ -1,67 +1,87 @@
-    "use client";
-    import { useState, useRef } from 'react';
+"use client";
+import { useState, useRef } from 'react';
 
-    export default function UploadeFile() {
-    const [jobFile, setJobFile] = useState(null);
-    const [resumeFile, setResumeFile] = useState(null);
-    
-    const jobInputRef = useRef();
-    const resumeInputRef = useRef();
+export default function UploadFile() {
+  const [imageFiles, setImageFiles] = useState([]);
+  const [jobFiles, setJobFiles] = useState([]);
+  const [resumeFiles, setResumeFiles] = useState([]);
 
-    const handleUpload = async () => {
-        if (!jobFile && !resumeFile) {
-        alert('Please upload at least one file.');
-        return;
-        }
+  const imageInputRef = useRef();
+  const jobInputRef = useRef();
+  const resumeInputRef = useRef();
 
-        const formData = new FormData();
-        if (jobFile) formData.append('jobFile', jobFile);
-        if (resumeFile) formData.append('resumeFile', resumeFile);
+  const handleImageFilesChange = (e) => {
+    setImageFiles(Array.from(e.target.files)); 
+  };
 
-        try {
-        const res = await fetch('/api/upload', {
-            method: 'POST',
-            body: formData,
-        });
+  const handleJobFilesChange = (e) => {
+    setJobFiles(Array.from(e.target.files)); 
+  };
 
-        const data = await res.json();
-        if (res.ok) {
-                alert(' Uploaded Successfully');
-            setJobFile(null);
-            setResumeFile(null);
-            if (jobInputRef.current) jobInputRef.current.value = "";
-            if (resumeInputRef.current) resumeInputRef.current.value = "";
-        } else {
-            alert(` Error: ${data.error}`);
-        }
-        } catch (err) {
-        alert(' Upload failed. Server may be down.');
-        }
-    };
+  const handleResumeFilesChange = (e) => {
+    setResumeFiles(Array.from(e.target.files)); 
+  };
 
-    return (
-        <div style={{ padding: '2rem' }}>
-        <div>
-            <h3>1. Upload Job</h3>
-            <input
-            type="file"
-            ref={jobInputRef}
-            onChange={e => setJobFile(e.target.files[0])}
-            />
-        </div>
-
-        <div style={{ marginTop: '1rem' }}>
-            <h3>2. Upload Resumes</h3>
-            <input
-            type="file"
-            ref={resumeInputRef}
-            onChange={e => setResumeFile(e.target.files[0])}
-            />
-        </div>
-
-        <button onClick={handleUpload} style={{ marginTop: '1.5rem' }}>
-            Submit Your File
-        </button>
-        </div>
-    );
+  const handleUpload = async () => {
+    if (jobFiles.length === 0 && resumeFiles.length === 0) {
+      alert('Please upload at least one job or resume file.');
+      return;
     }
+
+    const formData = new FormData();
+    // Append job files if present
+    jobFiles.forEach((file) => formData.append('jobFile', file));
+    // Append resume files if present
+    resumeFiles.forEach((file) => formData.append('resumeFile', file));
+
+    try {
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        alert('Uploaded Successfully');
+        setJobFiles([]);  
+        setResumeFiles([]);
+        setImageFiles([]);  // Reset image files state
+        if (jobInputRef.current) jobInputRef.current.value = "";
+        if (resumeInputRef.current) resumeInputRef.current.value = "";
+        if (imageInputRef.current) imageInputRef.current.value = "";
+      } else {
+        alert(`Error: ${data.error}`);
+      }
+    } catch (err) {
+      alert('Upload failed. Server may be down.');
+    }
+  };
+
+  return (
+    <div style={{ padding: '2rem' }}>
+      <div>
+        <h3>1. Upload Job Files (Multiple allowed)</h3>
+        <input
+          type="file"
+          ref={jobInputRef}
+          onChange={handleJobFilesChange}
+          multiple
+        />
+      </div>
+
+      <div style={{ marginTop: '1rem' }}>
+        <h3>2. Upload Resumes (Multiple allowed)</h3>
+        <input
+          type="file"
+          ref={resumeInputRef}
+          onChange={handleResumeFilesChange}
+          multiple
+        />
+      </div>
+
+      <button onClick={handleUpload} style={{ marginTop: '1.5rem' }}>
+        Submit Your Files
+      </button>
+    </div>
+  );
+}
