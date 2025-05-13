@@ -26,65 +26,74 @@ export default async function handler(req, res) {
 
   const form = formidable({ keepExtensions: true, multiples: true });
 
-  form.parse(req, async (err, fields, files) => {
-    if (err) return res.status(500).json({ error: 'Form parsing failed' });
+ form.parse(req, async (err, fields, files) => {
+  if (err) return res.status(500).json({ error: 'Form parsing failed' });
 
-    const auth = new google.auth.GoogleAuth({
-      credentials: serviceAccount,
-      scopes: ['https://www.googleapis.com/auth/drive.file'],
+  const auth = new google.auth.GoogleAuth({
+    credentials: serviceAccount,
+    scopes: ['https://www.googleapis.com/auth/drive.file'],
+  });
+
+  const drive = google.drive({ version: 'v3', auth });
+
+  const uploaded = [];
+
+  const uploadBufferFile = async (file, folderId) => {
+    const buffer = await fs.promises.readFile(file.filepath); 
+    const stream = Readable.from(buffer);
+
+    const response = await drive.files.create({
+      requestBody: {
+        name: file.originalFilename,
+        parents: [folderId],
+      },
+      media: {
+        mimeType: file.mimetype,
+        body: stream,
+      },
+      fields: 'id, name, webViewLink, webContentLink',
     });
 
-    const drive = google.drive({ version: 'v3', auth });
+    await drive.permissions.create({
+      fileId: response.data.id,
+      requestBody: { role: 'reader', type: 'anyone' },
+    });
 
-    const uploaded = [];
-
-    const uploadBufferFile = async (file, folderId) => {
-      const buffer = await fs.promises.readFile(file.filepath); 
-      const stream = Readable.from(buffer);
-
-      const response = await drive.files.create({
-        requestBody: {
-          name: file.originalFilename,
-          parents: [folderId],
-        },
-        media: {
-          mimeType: file.mimetype,
-          body: stream,
-        },
-        fields: 'id, name, webViewLink, webContentLink',
-      });
-
-      await drive.permissions.create({
-        fileId: response.data.id,
-        requestBody: { role: 'reader', type: 'anyone' },
-      });
-
-      return {
-        fileId: response.data.id,
-        fileName: response.data.name,
-        viewLink: response.data.webViewLink,
-        downloadLink: response.data.webContentLink,
-      };
+    return {
+      fileId: response.data.id,
+      fileName: response.data.name,
+      viewLink: response.data.webViewLink,
+      downloadLink: response.data.webContentLink,
     };
+  };
 
-    try {
-      const uploadedJobFiles = Array.isArray(files.jobFile) ? files.jobFile : [files.jobFile];
-      const uploadedResumeFiles = Array.isArray(files.resumeFile) ? files.resumeFile : [files.resumeFile];
+  try {
+    // ✅ Replace this part
+    const uploadedJobFiles = files.jobFile
+      ? Array.isArray(files.jobFile)
+        ? files.jobFile
+        : [files.jobFile]
+      : [];
 
-      // Handle multiple job files
-      for (let jobFile of uploadedJobFiles) {
-        uploaded.push(await uploadBufferFile(jobFile, process.env.GOOGLE_DRIVE_FOLDER_JOB));
-      }
+    const uploadedResumeFiles = files.resumeFile
+      ? Array.isArray(files.resumeFile)
+        ? files.resumeFile
+        : [files.resumeFile]
+      : [];
 
-      // Handle multiple resume files
-      for (let resumeFile of uploadedResumeFiles) {
-        uploaded.push(await uploadBufferFile(resumeFile, process.env.GOOGLE_DRIVE_FOLDER_RESUME));
-      }
-
-      res.status(200).json({ uploaded });
-    } catch (error) {
-      console.error('Upload error:', error);
-      res.status(500).json({ error: error.message });
+    for (let jobFile of uploadedJobFiles) {
+      uploaded.push(await uploadBufferFile(jobFile, process.env.GOOGLE_DRIVE_FOLDER_JOB));
     }
-  });
+
+    for (let resumeFile of uploadedResumeFiles) {
+      uploaded.push(await uploadBufferFile(resumeFile, process.env.GOOGLE_DRIVE_FOLDER_RESUME));
+    }
+
+    res.status(200).json({ uploaded });
+  } catch (error) {
+    console.error('Upload error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 }
