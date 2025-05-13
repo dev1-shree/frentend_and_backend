@@ -22,40 +22,38 @@ export default function UploadFile() {
     setResumeFiles(Array.from(e.target.files)); 
   };
 
-  const handleUpload = async () => {
-    if (jobFiles.length === 0 && resumeFiles.length === 0) {
-      alert('Please upload at least one job or resume file.');
-      return;
+const handleUpload = async () => {
+  if (jobFiles.length === 0 && resumeFiles.length === 0) {
+    alert('Please upload at least one job or resume file.');
+    return;
+  }
+
+  const formData = new FormData();
+  jobFiles.forEach((file) => formData.append('jobFile', file));
+  resumeFiles.forEach((file) => formData.append('resumeFile', file));
+
+  try {
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData,
+    });
+
+    const data = await res.json();
+    if (res.ok) {
+      alert('Uploaded Successfully');
+      setJobFiles([]);
+      setResumeFiles([]);
+      setImageFiles([]);
+      if (jobInputRef.current) jobInputRef.current.value = "";
+      if (resumeInputRef.current) resumeInputRef.current.value = "";
+      if (imageInputRef.current) imageInputRef.current.value = "";
+    } else {
+      alert(`Error: ${data.error}`);
     }
-
-    const formData = new FormData();
-    // Append job files if present
-    jobFiles.forEach((file) => formData.append('jobFile', file));
-    // Append resume files if present
-    resumeFiles.forEach((file) => formData.append('resumeFile', file));
-
-    try {
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        alert('Uploaded Successfully');
-        setJobFiles([]);  
-        setResumeFiles([]);
-        setImageFiles([]);  // Reset image files state
-        if (jobInputRef.current) jobInputRef.current.value = "";
-        if (resumeInputRef.current) resumeInputRef.current.value = "";
-        if (imageInputRef.current) imageInputRef.current.value = "";
-      } else {
-        alert(`Error: ${data.error}`);
-      }
-    } catch (err) {
-      alert('Upload failed. Server may be down.');
-    }
-  };
+  } catch (err) {
+    alert('Upload failed. Server may be down.');
+  }
+};
 
   return (
     <div style={{ padding: '2rem' }}>
