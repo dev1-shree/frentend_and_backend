@@ -1,90 +1,82 @@
-import { google } from 'googleapis';
-import formidable from 'formidable';
-import { Readable } from 'stream';
-import fs from 'fs';
+"use client";
+import { useState, useRef } from 'react';
 
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
+export default function UploadFile() {
+  // Initialize states to hold multiple files for both job and resume
+  const [jobFiles, setJobFiles] = useState([]);
+  const [resumeFiles, setResumeFiles] = useState([]);
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Only POST allowed' });
-  }
+  const jobInputRef = useRef();
+  const resumeInputRef = useRef();
 
-  const keyB64 = process.env.GOOGLE_SERVICE_ACCOUNT_B64;
-  if (!keyB64) return res.status(500).json({ error: 'Missing GOOGLE_SERVICE_ACCOUNT_B64' });
+  // Handle multiple job files selection
+  const handleJobFilesChange = (e) => {
+    setJobFiles(Array.from(e.target.files)); // Convert FileList to an array
+  };
 
-  let serviceAccount;
-  try {
-    serviceAccount = JSON.parse(Buffer.from(keyB64, 'base64').toString('utf-8'));
-  } catch (err) {
-    return res.status(500).json({ error: 'Failed to decode service account' });
-  }
+  // Handle multiple resume files selection
+  const handleResumeFilesChange = (e) => {
+    setResumeFiles(Array.from(e.target.files)); // Convert FileList to an array
+  };
 
-  const form = formidable({ keepExtensions: true, multiples: true });
+  const handleUpload = async () => {
+    if (jobFiles.length === 0 && resumeFiles.length === 0) {
+      alert('Please upload at least one file.');
+      return;
+    }
 
-  form.parse(req, async (err, fields, files) => {
-    if (err) return res.status(500).json({ error: 'Form parsing failed' });
-
-    const auth = new google.auth.GoogleAuth({
-      credentials: serviceAccount,
-      scopes: ['https://www.googleapis.com/auth/drive.file'],
-    });
-
-    const drive = google.drive({ version: 'v3', auth });
-
-    const uploaded = [];
-
-    const uploadBufferFile = async (file, folderId) => {
-      const buffer = await fs.promises.readFile(file.filepath); 
-      const stream = Readable.from(buffer);
-
-      const response = await drive.files.create({
-        requestBody: {
-          name: file.originalFilename,
-          parents: [folderId],
-        },
-        media: {
-          mimeType: file.mimetype,
-          body: stream,
-        },
-        fields: 'id, name, webViewLink, webContentLink',
-      });
-
-      await drive.permissions.create({
-        fileId: response.data.id,
-        requestBody: { role: 'reader', type: 'anyone' },
-      });
-
-      return {
-        fileId: response.data.id,
-        fileName: response.data.name,
-        viewLink: response.data.webViewLink,
-        downloadLink: response.data.webContentLink,
-      };
-    };
+    const formData = new FormData();
+    // Append all selected job files
+    jobFiles.forEach((file) => formData.append('jobFile', file));
+    // Append all selected resume files
+    resumeFiles.forEach((file) => formData.append('resumeFile', file));
 
     try {
-      const uploadedJobFiles = Array.isArray(files.jobFile) ? files.jobFile : [files.jobFile];
-      const uploadedResumeFiles = Array.isArray(files.resumeFile) ? files.resumeFile : [files.resumeFile];
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
 
-      // Handle multiple job files
-      for (let jobFile of uploadedJobFiles) {
-        uploaded.push(await uploadBufferFile(jobFile, process.env.GOOGLE_DRIVE_FOLDER_JOB));
+      const data = await res.json();
+      if (res.ok) {
+        alert('Uploaded Successfully');
+        setJobFiles([]);  // Clear the job files state
+        setResumeFiles([]); // Clear the resume files state
+        if (jobInputRef.current) jobInputRef.current.value = "";
+        if (resumeInputRef.current) resumeInputRef.current.value = "";
+      } else {
+        alert(Error: ${data.error});
       }
-
-      // Handle multiple resume files
-      for (let resumeFile of uploadedResumeFiles) {
-        uploaded.push(await uploadBufferFile(resumeFile, process.env.GOOGLE_DRIVE_FOLDER_RESUME));
-      }
-
-      res.status(200).json({ uploaded });
-    } catch (error) {
-      console.error('Upload error:', error);
-      res.status(500).json({ error: error.message });
+    } catch (err) {
+      alert('Upload failed. Server may be down.');
     }
-  });
+  };
+
+  return (
+    <div style={{ padding: '2rem' }}>
+      <div>
+        <h3>1. Upload Job Files (Multiple allowed)</h3>
+        <input
+          type="file"
+          ref={jobInputRef}
+          onChange={handleJobFilesChange}
+          multiple // Allow multiple files
+        />
+      </div>
+
+      <div style={{ marginTop: '1rem' }}>
+        <h3>2. Upload Resumes (Multiple allowed)</h3>
+        <input
+          type="file"
+          ref={resumeInputRef}
+          onChange={handleResumeFilesChange}
+          multiple // Allow multiple files
+        />
+      </div>
+
+      <button onClick={handleUpload} style={{ marginTop: '1.5rem' }}>
+        Submit Your Files
+      </button>
+    </div>
+  );
 }
